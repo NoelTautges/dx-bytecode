@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use find_winsdk::{SdkInfo, SdkVersion};
 use glob::glob;
+use indicatif::ParallelProgressIterator;
 use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -91,58 +92,55 @@ fn main() -> Result<()> {
 
     println!("Shaders to compile: {}", shaders.len());
 
-    shaders.par_iter().for_each(|(path, ty)| {
-        let relative_path = match path.strip_prefix(&shader_dir) {
-            Ok(p) => p,
-            Err(_) => return,
-        };
-        println!("Compiling {}", relative_path.display());
-
-        let (profile, entry_point) = match ty {
-            ShaderType::Vertex => ("vs_5_1", "VSMain"),
-            ShaderType::Pixel => ("ps_5_1", "PSMain"),
-        };
-        let (compiled_path, relative_path) = get_compiled_path(path, &output_dir, ty);
-        if let Some(parent) = compiled_path.parent() {
-            match fs::create_dir_all(parent) {
-                Ok(_) => (),
-                Err(_) => {
-                    println!(
-                        "Error creating output directory {}!",
-                        relative_path.display()
-                    );
-                    return;
+    shaders
+        .par_iter()
+        .progress_count(shaders.len() as u64)
+        .for_each(|(path, ty)| {
+            let (profile, entry_point) = match ty {
+                ShaderType::Vertex => ("vs_5_1", "VSMain"),
+                ShaderType::Pixel => ("ps_5_1", "PSMain"),
+            };
+            let (compiled_path, relative_path) = get_compiled_path(path, &output_dir, ty);
+            if let Some(parent) = compiled_path.parent() {
+                match fs::create_dir_all(parent) {
+                    Ok(_) => (),
+                    Err(_) => {
+                        println!(
+                            "Error creating output directory {}!",
+                            relative_path.display()
+                        );
+                        return;
+                    }
                 }
             }
-        }
 
-        let output = match Command::new(&fxc)
-            .args([
-                "/T",
-                profile,
-                "/E",
-                entry_point,
-                "/Fo",
-                &compiled_path.to_string_lossy(),
-                &path.to_string_lossy(),
-            ])
-            .output()
-        {
-            Ok(o) => o,
-            Err(_) => return,
-        };
-        if !output.status.success() {
-            println!(
-                "Compilation of {} failed (status code {})",
-                path.display(),
-                output.status
-            );
-            match std::str::from_utf8(&output.stderr) {
-                Ok(s) => println!("{}", s),
-                Err(_) => println!("UTF-8 error!"),
+            let output = match Command::new(&fxc)
+                .args([
+                    "/T",
+                    profile,
+                    "/E",
+                    entry_point,
+                    "/Fo",
+                    &compiled_path.to_string_lossy(),
+                    &path.to_string_lossy(),
+                ])
+                .output()
+            {
+                Ok(o) => o,
+                Err(_) => return,
+            };
+            if !output.status.success() {
+                println!(
+                    "Compilation of {} failed (status code {})",
+                    path.display(),
+                    output.status
+                );
+                match std::str::from_utf8(&output.stderr) {
+                    Ok(s) => println!("{}", s),
+                    Err(_) => println!("UTF-8 error!"),
+                }
             }
-        }
-    });
+        });
 
     Ok(())
 }

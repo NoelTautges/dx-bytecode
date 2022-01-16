@@ -9,6 +9,7 @@ edition = "2021"
 anyhow = "1.0.52"
 find-winsdk = "0.2.0"
 glob = "0.3.0"
+indicatif = { version = "0.16.2", features = ["rayon"] }
 rayon = "1.5.1"
 walkdir = "2.3.2"
 
