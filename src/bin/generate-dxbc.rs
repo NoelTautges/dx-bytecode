@@ -56,7 +56,7 @@ fn main() -> Result<()> {
     let mut output_dir = shader_dir.clone();
     output_dir.push("output");
     let mut shaders: Vec<(PathBuf, ShaderType)> = vec![];
-    println!("{}", shader_dir.display());
+    println!("Finding shaders in {}...", shader_dir.display());
 
     for entry in WalkDir::new(&shader_dir).into_iter().filter_map(|e| e.ok()) {
         let path = match fs::canonicalize(entry.into_path()) {
@@ -142,5 +142,6 @@ fn main() -> Result<()> {
             }
         });
 
+    println!("Finished!");
     Ok(())
 }
