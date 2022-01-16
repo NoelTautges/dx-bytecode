@@ -1,0 +1,21 @@
+[package]
+name = "dx-bytecode"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.52"
+find-winsdk = "0.2.0"
+glob = "0.3.0"
+rayon = "1.5.1"
+walkdir = "2.3.2"
+
+[features]
+default = ["dxbc"]
+dxbc = []
+
+[[bin]]
+name = "generate-dxbc"
+required-features = ["dxbc"]

@@ -1,0 +1,3 @@
+[submodule "shaders/Direct3D-Rendering-Cookbook"]
+	path = shaders/Direct3D-Rendering-Cookbook
+	url = https://github.com/spazzarama/Direct3D-Rendering-Cookbook
