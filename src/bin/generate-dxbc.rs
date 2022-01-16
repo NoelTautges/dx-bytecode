@@ -32,17 +32,17 @@ fn get_fxc_path() -> Result<PathBuf> {
 }
 
 fn get_compiled_path(path: &Path, output_dir: &Path, ty: &ShaderType) -> (PathBuf, PathBuf) {
-    let mut file_name = path.file_name().unwrap().to_owned();
+    let mut file_name = path.file_stem().unwrap().to_owned();
     file_name.push("_");
     file_name.push(match ty {
         ShaderType::Vertex => "v",
         ShaderType::Pixel => "p",
     });
+    file_name.push(".dxbc");
     let relative_path = path
         .strip_prefix(output_dir.parent().unwrap())
         .unwrap()
-        .with_file_name(file_name)
-        .with_extension("dxbc");
+        .with_file_name(&file_name);
     let mut absolute_path = output_dir.to_path_buf();
     absolute_path.push(&relative_path);
     (absolute_path, relative_path)
