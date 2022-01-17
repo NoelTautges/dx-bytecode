@@ -1,6 +1,8 @@
 /*!
 [DirectX Bytecode][dxbc] (DXBC) parser. Currently only supports DXBC 5.
 
+DXBC 4 may be supported in the future.
+
 [dxbc]: https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/shader-model-5-assembly--directx-hlsl-
 */
 
@@ -13,6 +15,7 @@ use nom::{Err, IResult};
 
 type Res<T, U> = IResult<T, U, VerboseError<T>>;
 
+/// Chunk type, marked by the FourCC code at the beginning of each chunk.
 pub enum ChunkType {
     IFCE,
     ISGN,
@@ -27,14 +30,17 @@ pub enum ChunkType {
     STAT,
 }
 
+/// DXBC chunk.
 pub struct Chunk {
     pub ty: ChunkType,
 }
 
+/// Parsed bytecode object, including the header, chunks, and assembly.
 pub struct Bytecode {
     pub checksum: [u8; 16],
 }
 
+/// Parses a DXBC chunk from bytes.
 fn chunk(input: &[u8]) -> Res<&[u8], Chunk> {
     let (rest, four_cc) = take(4usize)(input)?;
     let ty = match four_cc {
@@ -61,6 +67,7 @@ fn chunk(input: &[u8]) -> Res<&[u8], Chunk> {
     Ok((rest, Chunk { ty }))
 }
 
+/// Parses a bytecode object from bytes.
 pub fn get_dxbc(input: &[u8]) -> Res<&[u8], Bytecode> {
     tag("DXBC")(input)?;
     let (rest, checksum) = preceded(tag("DXBC"), take(16u8))(input)?;
