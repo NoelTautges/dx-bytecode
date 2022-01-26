@@ -14,6 +14,7 @@ enum ShaderType {
     Pixel,
 }
 
+/// Finds fxc.exe.
 fn get_fxc_path() -> Result<PathBuf> {
     let sdk = SdkInfo::find(SdkVersion::Any)
         .with_context(|| "Error while finding Windows SDK!")?
@@ -31,21 +32,42 @@ fn get_fxc_path() -> Result<PathBuf> {
     Ok(fxc)
 }
 
-fn get_compiled_path(path: &Path, output_dir: &Path, ty: &ShaderType) -> (PathBuf, PathBuf) {
-    let mut file_name = path.file_stem().unwrap().to_owned();
+/// Returns the absolute and relative paths of the intended output file if the shader needs compilation.
+///
+/// If the output file exists and has a newer modification time than the input file, returns [None].
+fn get_compiled_path(
+    input_path: &Path,
+    output_dir: &Path,
+    ty: &ShaderType,
+) -> Option<(PathBuf, PathBuf)> {
+    let mut file_name = input_path.file_stem().unwrap().to_owned();
     file_name.push("_");
     file_name.push(match ty {
         ShaderType::Vertex => "v",
         ShaderType::Pixel => "p",
     });
     file_name.push(".dxbc");
-    let relative_path = path
+    let relative_path = input_path
         .strip_prefix(output_dir.parent().unwrap())
         .unwrap()
         .with_file_name(&file_name);
     let mut absolute_path = output_dir.to_path_buf();
     absolute_path.push(&relative_path);
-    (absolute_path, relative_path)
+    if !absolute_path.exists()
+        || match (fs::metadata(&input_path), fs::metadata(&absolute_path)) {
+            (Ok(input_metadata), Ok(output_metadata)) => {
+                match (input_metadata.modified(), output_metadata.modified()) {
+                    (Ok(input_time), Ok(output_time)) => input_time > output_time,
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    {
+        Some((absolute_path, relative_path))
+    } else {
+        None
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -54,7 +76,7 @@ fn main() -> Result<()> {
 
     let shader_dir = fs::canonicalize(std::env::current_exe()?.join("../../../shaders"))?;
     let mut output_dir = shader_dir.clone();
-    output_dir.push("output");
+    output_dir.push("compiled");
     let mut shaders: Vec<(PathBuf, ShaderType)> = vec![];
     println!("Finding shaders in {}...", shader_dir.display());
 
@@ -71,16 +93,12 @@ fn main() -> Result<()> {
                         Err(_) => continue,
                     };
                     if text.contains("VSMain")
-                        && !get_compiled_path(&path, &output_dir, &ShaderType::Vertex)
-                            .0
-                            .exists()
+                        && get_compiled_path(&path, &output_dir, &ShaderType::Vertex).is_some()
                     {
                         shaders.push((path.clone(), ShaderType::Vertex));
                     }
                     if text.contains("PSMain")
-                        && !get_compiled_path(&path, &output_dir, &ShaderType::Pixel)
-                            .0
-                            .exists()
+                        && get_compiled_path(&path, &output_dir, &ShaderType::Pixel).is_some()
                     {
                         shaders.push((path.clone(), ShaderType::Pixel));
                     }
@@ -100,7 +118,10 @@ fn main() -> Result<()> {
                 ShaderType::Vertex => ("vs_5_1", "VSMain"),
                 ShaderType::Pixel => ("ps_5_1", "PSMain"),
             };
-            let (compiled_path, relative_path) = get_compiled_path(path, &output_dir, ty);
+            let (compiled_path, relative_path) = match get_compiled_path(path, &output_dir, ty) {
+                Some(pair) => pair,
+                None => return,
+            };
             if let Some(parent) = compiled_path.parent() {
                 match fs::create_dir_all(parent) {
                     Ok(_) => (),
@@ -132,12 +153,12 @@ fn main() -> Result<()> {
             if !output.status.success() {
                 println!(
                     "Compilation of {} failed (status code {})",
-                    path.display(),
-                    output.status
+                    relative_path.display(),
+                    output.status,
                 );
                 match std::str::from_utf8(&output.stderr) {
                     Ok(s) => println!("{}", s),
-                    Err(_) => println!("UTF-8 error!"),
+                    Err(_) => println!("UTF-8 error while getting compilation error!"),
                 }
             }
         });
