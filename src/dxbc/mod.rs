@@ -1,7 +1,5 @@
 /*!
-[DirectX Bytecode][dxbc] (DXBC) parser. Currently only supports DXBC 5.
-
-DXBC 4 may be supported in the future.
+[DirectX Bytecode][dxbc] (DXBC) parser.
 
 [dxbc]: https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/shader-model-5-assembly--directx-hlsl-
 */
@@ -112,7 +110,7 @@ fn chunk(input: &[u8]) -> Res<&[u8], Chunk> {
 }
 
 /// Parses a bytecode object from bytes.
-pub fn get_dxbc(input: &[u8]) -> Res<&[u8], Bytecode> {
+pub fn parse_dxbc(input: &[u8]) -> Res<&[u8], Bytecode> {
     tag("DXBC")(input)?;
     let (rest, checksum) = preceded(tag("DXBC"), take(16u8))(input)?;
     let (rest, _) = tag("\x01\x00\x00\x00")(rest)?;
