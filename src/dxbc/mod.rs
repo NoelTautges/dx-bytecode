@@ -6,6 +6,8 @@ DXBC 4 may be supported in the future.
 [dxbc]: https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/shader-model-5-assembly--directx-hlsl-
 */
 
+use std::str::Utf8Error;
+
 use nom::bytes::complete::{tag, take};
 use nom::error::{VerboseError, VerboseErrorKind};
 use nom::multi::{count, length_count};
@@ -70,22 +72,33 @@ pub struct Bytecode {
 /// Parses a DXBC chunk from bytes.
 fn chunk(input: &[u8]) -> Res<&[u8], Chunk> {
     let (rest, four_cc) = take(4usize)(input)?;
+    let four_cc = match std::str::from_utf8(four_cc) {
+        Ok(s) => s,
+        Err(Utf8Error { .. }) => {
+            return Err(Err::Failure(VerboseError {
+                errors: vec![(
+                    rest,
+                    VerboseErrorKind::Context("UTF-8 error decoding chunk FourCC!"),
+                )],
+            }))
+        }
+    };
     let ty = match four_cc {
-        b"\x49\x53\x47\x4E" => ChunkType::ISGN,
-        b"\x49\x53\x47\x31" => ChunkType::ISG1,
-        b"\x4F\x53\x47\x4E" => ChunkType::OSGN,
-        b"\x4F\x53\x47\x31" => ChunkType::OSG1,
-        b"\x4F\x53\x47\x35" => ChunkType::OSG5,
-        b"\x50\x43\x53\x47" => ChunkType::PCSG,
-        b"\x49\x46\x43\x45" => ChunkType::IFCE,
-        b"\x52\x44\x45\x46" => ChunkType::RDEF,
-        b"\x53\x46\x49\x30" => ChunkType::SFI0,
-        b"\x41\x6F\x6E\x39" => ChunkType::Aon9,
-        b"\x53\x48\x44\x52" => ChunkType::SHDR,
-        b"\x53\x48\x45\x58" => ChunkType::SHEX,
-        b"\x53\x54\x41\x54" => ChunkType::STAT,
-        b"\x53\x44\x47\x42" => ChunkType::SDGB,
-        b"\x53\x50\x44\x42" => ChunkType::SPDB,
+        "ISGN" => ChunkType::ISGN,
+        "ISG1" => ChunkType::ISG1,
+        "OSGN" => ChunkType::OSGN,
+        "OSG1" => ChunkType::OSG1,
+        "OSG5" => ChunkType::OSG5,
+        "PCSG" => ChunkType::PCSG,
+        "IFCE" => ChunkType::IFCE,
+        "RDEF" => ChunkType::RDEF,
+        "SFI0" => ChunkType::SFI0,
+        "Aon9" => ChunkType::Aon9,
+        "SHDR" => ChunkType::SHDR,
+        "SHEX" => ChunkType::SHEX,
+        "STAT" => ChunkType::STAT,
+        "SDGB" => ChunkType::SDGB,
+        "SPDB" => ChunkType::SPDB,
         _ => {
             return Err(Err::Failure(VerboseError {
                 errors: vec![(rest, VerboseErrorKind::Context("Unknown chunk type!"))],
