@@ -4,61 +4,26 @@
 [dxbc]: https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/shader-model-5-assembly--directx-hlsl-
 */
 
+mod chunks;
+
 use std::str::Utf8Error;
 
+use nom::Err;
 use nom::bytes::complete::{tag, take};
 use nom::error::{VerboseError, VerboseErrorKind};
 use nom::multi::{count, length_count};
 use nom::number::complete::le_u32;
 use nom::sequence::preceded;
-use nom::{Err, IResult};
 
-type Res<T, U> = IResult<T, U, VerboseError<T>>;
-
-/// Chunk type, marked by the FourCC code at the beginning of each chunk.
-pub enum ChunkType {
-    /// Input signature.
-    ISGN,
-    /// [Input signature when the shader uses min16float types.](https://twitter.com/aras_p/status/639106535889760257)
-    ISG1,
-    /// Output signature.
-    OSGN,
-    /// [Output signature when the shader uses min16float types.](https://twitter.com/aras_p/status/639106535889760257)
-    OSG1,
-    /// Output signature (SM5).
-    OSG5,
-    /// Patch constant signature.
-    PCSG,
-    /// [Interface and class definitions.](https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/overviews-direct3d-11-hlsl-dynamic-linking-class)
-    ///
-    /// [SlimShader docs](https://github.com/tgjones/slimshader/blob/master/src/SlimShader/Chunks/Ifce/InterfacesChunk.cs)
-    IFCE,
-    /// Resource definitions.
-    RDEF,
-    /// Enables features like half- or double-precision floating points and [structured buffers][buffers].
-    ///
-    /// [SlimShader docs](https://github.com/tgjones/slimshader/blob/master/src/SlimShader/Chunks/Sfi0/Sfi0Chunk.cs)
-    ///
-    /// [buffers]: https://docs.microsoft.com/en-us/windows/win32/direct3d11/direct3d-11-advanced-stages-cs-resources
-    SFI0,
-    /// Shader assembly (DX9).
-    Aon9,
-    /// Shader assembly (SM4).
-    SHDR,
-    /// Shader assembly (SM5).
-    SHEX,
-    /// Shader statistics.
-    STAT,
-    /// Shader debug info (old).
-    SDGB,
-    /// Shader debug info (new).
-    SPDB,
-}
+use crate::utils::Res;
+use chunks::ChunkVariant;
 
 /// DXBC chunk.
 pub struct Chunk {
-    /// Chunk type, determined by FourCC code.
-    pub ty: ChunkType,
+    /// Chunk length.
+    pub len: u32,
+    /// Chunk variant.
+    pub variant: ChunkVariant,
 }
 
 /// Parsed bytecode object, including the header, chunks, and assembly.
@@ -81,32 +46,36 @@ fn chunk(input: &[u8]) -> Res<&[u8], Chunk> {
             }))
         }
     };
-    let ty = match four_cc {
-        "ISGN" => ChunkType::ISGN,
-        "ISG1" => ChunkType::ISG1,
-        "OSGN" => ChunkType::OSGN,
-        "OSG1" => ChunkType::OSG1,
-        "OSG5" => ChunkType::OSG5,
-        "PCSG" => ChunkType::PCSG,
-        "IFCE" => ChunkType::IFCE,
-        "RDEF" => ChunkType::RDEF,
-        "SFI0" => ChunkType::SFI0,
-        "Aon9" => ChunkType::Aon9,
-        "SHDR" => ChunkType::SHDR,
-        "SHEX" => ChunkType::SHEX,
-        "STAT" => ChunkType::STAT,
-        "SDGB" => ChunkType::SDGB,
-        "SPDB" => ChunkType::SPDB,
+    let (rest, len) = le_u32(rest)?;
+    let mut rest = rest;
+    let variant = match four_cc {
+        "ISGN" => ChunkVariant::ISGN,
+        "ISG1" => ChunkVariant::ISG1,
+        "OSGN" => ChunkVariant::OSGN,
+        "OSG1" => ChunkVariant::OSG1,
+        "OSG5" => ChunkVariant::OSG5,
+        "PCSG" => ChunkVariant::PCSG,
+        "IFCE" => ChunkVariant::IFCE,
+        "RDEF" => {
+            let chunk = chunks::rdef(rest)?;
+            rest = chunk.0;
+            ChunkVariant::RDEF(chunk.1)
+        },
+        "SFI0" => ChunkVariant::SFI0,
+        "Aon9" => ChunkVariant::Aon9,
+        "SHDR" => ChunkVariant::SHDR,
+        "SHEX" => ChunkVariant::SHEX,
+        "STAT" => ChunkVariant::STAT,
+        "SDGB" => ChunkVariant::SDGB,
+        "SPDB" => ChunkVariant::SPDB,
         _ => {
             return Err(Err::Failure(VerboseError {
                 errors: vec![(rest, VerboseErrorKind::Context("Unknown chunk type!"))],
             }))
         }
     };
-    let (rest, len) = le_u32(rest)?;
-    let (rest, _data) = take(len)(rest)?;
 
-    Ok((rest, Chunk { ty }))
+    Ok((rest, Chunk { len, variant }))
 }
 
 /// Parses a bytecode object from bytes.

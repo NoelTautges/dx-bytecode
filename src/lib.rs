@@ -7,5 +7,6 @@ DXBC 4 and DirectX Intermediate Language (DXIL) may be supported in the future.
 #![warn(missing_docs)]
 #![warn(rustdoc::missing_doc_code_examples)]
 
+mod utils;
 #[cfg(feature = "dxbc")]
 pub mod dxbc;
