@@ -1,8 +1,10 @@
+mod common;
 mod rdef;
 
 pub use rdef::*;
 
 /// DXBC chunk variants.
+#[derive(Debug)]
 pub enum ChunkVariant {
     /// Input signature.
     ISGN,
