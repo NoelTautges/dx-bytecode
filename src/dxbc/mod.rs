@@ -8,17 +8,16 @@ mod chunks;
 
 use std::str::Utf8Error;
 
-use nom::Err;
 use nom::bytes::complete::{tag, take};
-use nom::error::{VerboseError, VerboseErrorKind};
 use nom::multi::{count, length_count};
 use nom::number::complete::le_u32;
 use nom::sequence::preceded;
 
-use crate::utils::Res;
+use crate::utils::{Res, to_err};
 use chunks::ChunkVariant;
 
 /// DXBC chunk.
+#[derive(Debug)]
 pub struct Chunk {
     /// Chunk length.
     pub len: u32,
@@ -37,17 +36,10 @@ fn chunk(input: &[u8]) -> Res<&[u8], Chunk> {
     let (rest, four_cc) = take(4usize)(input)?;
     let four_cc = match std::str::from_utf8(four_cc) {
         Ok(s) => s,
-        Err(Utf8Error { .. }) => {
-            return Err(Err::Failure(VerboseError {
-                errors: vec![(
-                    rest,
-                    VerboseErrorKind::Context("UTF-8 error decoding chunk FourCC!"),
-                )],
-            }))
-        }
+        Err(Utf8Error { .. }) => return Err(to_err(rest, "UTF-8 error decoding chunk FourCC!")),
     };
     let (rest, len) = le_u32(rest)?;
-    let mut rest = rest;
+    let (rest, data) = take(len)(rest)?;
     let variant = match four_cc {
         "ISGN" => ChunkVariant::ISGN,
         "ISG1" => ChunkVariant::ISG1,
@@ -56,11 +48,7 @@ fn chunk(input: &[u8]) -> Res<&[u8], Chunk> {
         "OSG5" => ChunkVariant::OSG5,
         "PCSG" => ChunkVariant::PCSG,
         "IFCE" => ChunkVariant::IFCE,
-        "RDEF" => {
-            let chunk = chunks::rdef(rest)?;
-            rest = chunk.0;
-            ChunkVariant::RDEF(chunk.1)
-        },
+        "RDEF" => ChunkVariant::RDEF(chunks::rdef(data)?.1),
         "SFI0" => ChunkVariant::SFI0,
         "Aon9" => ChunkVariant::Aon9,
         "SHDR" => ChunkVariant::SHDR,
@@ -68,11 +56,7 @@ fn chunk(input: &[u8]) -> Res<&[u8], Chunk> {
         "STAT" => ChunkVariant::STAT,
         "SDGB" => ChunkVariant::SDGB,
         "SPDB" => ChunkVariant::SPDB,
-        _ => {
-            return Err(Err::Failure(VerboseError {
-                errors: vec![(rest, VerboseErrorKind::Context("Unknown chunk type!"))],
-            }))
-        }
+        _ => return Err(to_err(data, "Unknown chunk type!")),
     };
 
     Ok((rest, Chunk { len, variant }))
@@ -86,9 +70,7 @@ pub fn parse_dxbc(input: &[u8]) -> Res<&[u8], Bytecode> {
     let (rest, len) = le_u32(rest)?;
     let len = len as usize;
     if len != input.len() {
-        return Err(Err::Failure(VerboseError {
-            errors: vec![(rest, VerboseErrorKind::Context("Wrong shader length!"))],
-        }));
+        return Err(to_err(rest, "Wrong shader length!"));
     }
     let (rest, offsets) = length_count(le_u32, le_u32)(rest)?;
     let (rest, _chunks) = count(chunk, offsets.len())(rest)?;
