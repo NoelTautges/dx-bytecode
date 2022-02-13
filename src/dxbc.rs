@@ -6,8 +6,6 @@
 
 mod chunks;
 
-use std::str::Utf8Error;
-
 use nom::bytes::complete::{tag, take};
 use nom::multi::{count, length_count};
 use nom::number::complete::le_u32;
@@ -32,30 +30,26 @@ pub struct Bytecode {
 }
 
 /// Parses a DXBC chunk from bytes.
-fn chunk(input: &[u8]) -> Res<&[u8], Chunk> {
+fn chunk(input: &[u8]) -> Res<Chunk> {
     let (rest, four_cc) = take(4usize)(input)?;
-    let four_cc = match std::str::from_utf8(four_cc) {
-        Ok(s) => s,
-        Err(Utf8Error { .. }) => return Err(to_err(rest, "UTF-8 error decoding chunk FourCC!")),
-    };
     let (rest, len) = le_u32(rest)?;
     let (rest, data) = take(len)(rest)?;
     let variant = match four_cc {
-        "ISGN" => ChunkVariant::ISGN,
-        "ISG1" => ChunkVariant::ISG1,
-        "OSGN" => ChunkVariant::OSGN,
-        "OSG1" => ChunkVariant::OSG1,
-        "OSG5" => ChunkVariant::OSG5,
-        "PCSG" => ChunkVariant::PCSG,
-        "IFCE" => ChunkVariant::IFCE,
-        "RDEF" => ChunkVariant::RDEF(chunks::rdef(data)?.1),
-        "SFI0" => ChunkVariant::SFI0,
-        "Aon9" => ChunkVariant::Aon9,
-        "SHDR" => ChunkVariant::SHDR,
-        "SHEX" => ChunkVariant::SHEX,
-        "STAT" => ChunkVariant::STAT,
-        "SDGB" => ChunkVariant::SDGB,
-        "SPDB" => ChunkVariant::SPDB,
+        b"ISGN" => ChunkVariant::ISGN,
+        b"ISG1" => ChunkVariant::ISG1,
+        b"OSGN" => ChunkVariant::OSGN,
+        b"OSG1" => ChunkVariant::OSG1,
+        b"OSG5" => ChunkVariant::OSG5,
+        b"PCSG" => ChunkVariant::PCSG,
+        b"IFCE" => ChunkVariant::IFCE,
+        b"RDEF" => ChunkVariant::RDEF(chunks::rdef(data)?.1),
+        b"SFI0" => ChunkVariant::SFI0,
+        b"Aon9" => ChunkVariant::Aon9,
+        b"SHDR" => ChunkVariant::SHDR,
+        b"SHEX" => ChunkVariant::SHEX,
+        b"STAT" => ChunkVariant::STAT,
+        b"SDGB" => ChunkVariant::SDGB,
+        b"SPDB" => ChunkVariant::SPDB,
         _ => return Err(to_err(data, "Unknown chunk type!")),
     };
 
@@ -63,7 +57,7 @@ fn chunk(input: &[u8]) -> Res<&[u8], Chunk> {
 }
 
 /// Parses a bytecode object from bytes.
-pub fn parse_dxbc(input: &[u8]) -> Res<&[u8], Bytecode> {
+pub fn parse_dxbc(input: &[u8]) -> Res<Bytecode> {
     tag("DXBC")(input)?;
     let (rest, checksum) = preceded(tag("DXBC"), take(16u8))(input)?;
     let (rest, _) = tag("\x01\x00\x00\x00")(rest)?;

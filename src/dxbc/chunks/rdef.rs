@@ -1,7 +1,7 @@
 use bitflags::bitflags;
-use nom::{number::complete::{le_u8, le_u16, le_u32}, bytes::complete::{take_until, take}};
+use nom::{number::complete::{le_u8, le_u16, le_u32}, bytes::complete::{take_until, take}, multi::count};
 
-use crate::utils::{Res, to_err};
+use crate::utils::{Res, take_string, to_err};
 use super::common::{ShaderVersion, ProgramType};
 
 bitflags! {
@@ -32,15 +32,81 @@ bitflags! {
 }
 
 #[derive(Debug)]
+pub struct ConstantBuffer {
+    pub name: String,
+}
+
+#[derive(Debug)]
+pub struct ResourceBinding {
+
+}
+
+/// RDEF chunk data.
+#[derive(Debug)]
 pub struct Rdef {
     pub version: ShaderVersion,
     pub flags: ShaderFlags,
     pub creator: String,
+    pub interface_slot_count: Option<u32>,
+    pub constant_buffers: Vec<ConstantBuffer>,
+    pub resource_bindings: Vec<ResourceBinding>,
 }
 
-pub fn rdef(input: &[u8]) -> Res<&[u8], Rdef> {
+/// Parses an RD11 section.
+/// 
+/// Only found in Shader Model 5.
+fn rdef_rd11(input: &[u8]) -> Res<u32> {
+    let (rest, unknown1) = le_u32(input)?;
+    if unknown1 != 60 {
+        return Err(to_err(rest, "Unknown 1 in SM5 RDEF RD11 section had unknown value != 60!"));
+    }
+    let (rest, unknown2) = le_u32(rest)?;
+    if unknown2 != 24 {
+        return Err(to_err(rest, "Unknown 2 in SM5 RDEF RD11 section had unknown value != 24!"));
+    }
+    let (rest, unknown3) = le_u32(rest)?;
+    if unknown3 != 32 {
+        return Err(to_err(rest, "Unknown 3 in SM5 RDEF RD11 section had unknown value != 32!"));
+    }
+    let (rest, unknown4) = le_u32(rest)?;
+    if unknown4 != 40 {
+        return Err(to_err(rest, "Unknown 4 in SM5 RDEF RD11 section had unknown value != 40!"));
+    }
+    let (rest, unknown5) = le_u32(rest)?;
+    if unknown5 != 36 {
+        return Err(to_err(rest, "Unknown 5 in SM5 RDEF RD11 section had unknown value != 36!"));
+    }
+    let (rest, unknown6) = le_u32(rest)?;
+    if unknown6 != 12 {
+        return Err(to_err(rest, "Unknown 6 in SM5 RDEF RD11 section had unknown value != 12!"));
+    }
+    let (rest, interface_slot_count) = le_u32(input)?;
+
+    Ok((rest, interface_slot_count))
+}
+
+/// Parses a constant buffer.
+fn constant_buffer(input: &[u8]) -> Res<ConstantBuffer> {
+    println!("{:?}", input);
+    let (rest, name_offset) = le_u32(input)?;
+    let (name_bytes, _) = take(name_offset)(input)?;
+    let (rest, var_count) = le_u32(rest)?;
+    let (rest, var_offset) = le_u32(rest)?;
+
+    println!("{}\n{:?}", name_offset, name_bytes);
+    let (_, name) = take_string(name_bytes)?;
+
+    Ok((rest, ConstantBuffer {
+        name,
+    }))
+}
+
+/// Parses an RDEF chunk.
+pub fn rdef(input: &[u8]) -> Res<Rdef> {
+    // Constant buffers
     let (rest, cb_count) = le_u32(input)?;
     let (rest, cb_offset) = le_u32(rest)?;
+    // Resource bindings
     let (rest, rb_count) = le_u32(rest)?;
     let (rest, rb_offset) = le_u32(rest)?;
 
@@ -61,15 +127,30 @@ pub fn rdef(input: &[u8]) -> Res<&[u8], Rdef> {
     let flags = ShaderFlags::from_bits_truncate(flags);
     let (rest, creator_offset) =  le_u32(rest)?;
     let (creator_bytes, _) = take(creator_offset)(input)?;
-    let (_, creator) = take_until("\0")(creator_bytes)?;
-    let creator = match String::from_utf8(creator.to_vec()) {
-        Ok(s) => s,
-        Err(_) => return Err(to_err(creator_bytes, "Couldn't convert creator string to UTF-8!")),
+    let (_, creator) = take_string(creator_bytes)?;
+
+    // TODO: Lax Shader Model
+    let (rd11_bytes, _) = take(4usize)(rest)?;
+    let interface_slot_count = if rd11_bytes == b"RD11" {
+        Some(rdef_rd11(input)?.1)
+    } else {
+        None
     };
+
+    let (cb_bytes, _) = take(cb_offset)(input)?;
+    let (_, constant_buffers) = count(
+        constant_buffer,
+        cb_count as usize,
+    )(cb_bytes)?;
+
+    let (rb_bytes, _) = take(rb_offset)(input)?;
 
     Ok((rest, Rdef {
         version,
         flags,
         creator,
+        interface_slot_count,
+        constant_buffers,
+        resource_bindings: vec![],
     }))
 }

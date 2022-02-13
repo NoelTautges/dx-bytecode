@@ -3,7 +3,7 @@ mod rdef;
 
 pub use rdef::*;
 
-/// DXBC chunk variants.
+/// DXBC chunks.
 #[derive(Debug)]
 pub enum ChunkVariant {
     /// Input signature.
